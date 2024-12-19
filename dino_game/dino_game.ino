@@ -57,7 +57,7 @@ Cloud clouds[MAX_CLOUDS]; // array to hold clouds
 Star stars[MAX_STARS]; // array to hold stars
 
 // Obstacle management
-const int MAX_OBSTACLES = 3; // maximum number of obstacles
+const int MAX_OBSTACLES = 2; // maximum number of obstacles
 int obstacleX[MAX_OBSTACLES]; // x-coordinates of the obstacles
 bool obstacleActive[MAX_OBSTACLES];  // flags to check if obstacles are active
 bool obstacleIsSmall[MAX_OBSTACLES]; // keep track of which obstacles are small
@@ -73,13 +73,33 @@ const unsigned char PROGMEM dino[] = {
   0x01, 0x0c, 0x00, 0x00, 0x01, 0x8e, 0x00, 0x00
 };
 
+// Add running animation frames for the dinosaur
+const unsigned char PROGMEM dinoRun1[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0xfe, 0x00, 0x00, 0x06, 0xff, 0x00, 0x00, 0x0e, 0xff, 0x00, 
+  0x00, 0x0f, 0xff, 0x00, 0x00, 0x0f, 0xff, 0x00, 0x00, 0x0f, 0xff, 0x00, 0x00, 0x0f, 0xc0, 0x00, 
+  0x00, 0x0f, 0xfc, 0x00, 0x40, 0x0f, 0xc0, 0x00, 0x40, 0x1f, 0x80, 0x00, 0x40, 0x7f, 0x80, 0x00, 
+  0x60, 0xff, 0xe0, 0x00, 0x71, 0xff, 0xa0, 0x00, 0x7f, 0xff, 0x80, 0x00, 0x7f, 0xff, 0x80, 0x00, 
+  0x7f, 0xff, 0x80, 0x00, 0x3f, 0xff, 0x00, 0x00, 0x1f, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x00, 0x00, 
+  0x03, 0xfc, 0x00, 0x00, 0x01, 0xdc, 0x00, 0x00, 0x01, 0x8c, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 
+  0x00, 0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+const unsigned char PROGMEM dinoRun2[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0xfe, 0x00, 0x00, 0x06, 0xff, 0x00, 0x00, 0x0e, 0xff, 0x00, 
+  0x00, 0x0f, 0xff, 0x00, 0x00, 0x0f, 0xff, 0x00, 0x00, 0x0f, 0xff, 0x00, 0x00, 0x0f, 0xc0, 0x00, 
+  0x00, 0x0f, 0xfc, 0x00, 0x40, 0x0f, 0xc0, 0x00, 0x40, 0x1f, 0x80, 0x00, 0x40, 0x7f, 0x80, 0x00, 
+  0x60, 0xff, 0xe0, 0x00, 0x71, 0xff, 0xa0, 0x00, 0x7f, 0xff, 0x80, 0x00, 0x7f, 0xff, 0x80, 0x00, 
+  0x7f, 0xff, 0x80, 0x00, 0x3f, 0xff, 0x00, 0x00, 0x1f, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x00, 0x00, 
+  0x03, 0xfc, 0x00, 0x00, 0x01, 0xdc, 0x00, 0x00, 0x01, 0x8c, 0x00, 0x00, 0x01, 0x8c, 0x00, 0x00, 
+  0x01, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
 // 12x24 cactus
 const unsigned char PROGMEM cactus[] = {
   0x1e, 0x00, 0x1f, 0x00, 0x1f, 0x40, 0x1f, 0xe0, 0x1f, 0xe0, 0xdf, 0xe0, 0xff, 0xe0, 0xff, 0xe0, 
   0xff, 0xe0, 0xff, 0xe0, 0xff, 0xe0, 0xff, 0xe0, 0xff, 0xc0, 0xff, 0x00, 0xff, 0x00, 0x7f, 0x00, 
   0x1f, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x1f, 0x00
 };
-
 // 10x20 cactus
 const unsigned char PROGMEM smallCactus[] = {
   0x30, 0x00, 0x78, 0x00, 0x78, 0x00, 0x78, 0x00, 0x78, 0x01, 0xFB, 0x03,
@@ -92,6 +112,11 @@ const unsigned char PROGMEM cloud[] = {
     0x0F, 0xC0, 0x1F, 0xE0, 0x3F, 0xF0, 0x3F, 0xF0, 0x1F, 0xE0, 0x0F, 0xC0
 };
 
+// Add animation variables
+unsigned long lastFrameTime = 0;
+const int FRAME_DELAY = 100; // time between animation frames in milliseconds
+bool isFirstFrame = true;
+
 void setup() {
   Serial.begin(9600); // start serial communication for debugging
   pinMode(BUTTON_PIN, INPUT_PULLUP); // configure the button pin as input with internal pull-up
@@ -102,11 +127,49 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;); // stop the program if the display initialization fails
   }
+
+  Serial.println(F("Dino Game initialized successfully"));
   display.clearDisplay(); // clear the display buffer
   display.display(); // update the display
   
   randomSeed(analogRead(0)); // initialize random seed using analog noise
   initializeGame(); // call function to initialize game variables
+}
+
+// Main game loop
+void loop() {
+  switch (gameState) {
+    case START_SCREEN:
+      drawStartScreen(); // draw the start screen
+      if (digitalRead(BUTTON_PIN) == LOW) {
+        delay(200);  // button debounce
+        gameState = PLAYING; // start the game
+        Serial.println(F("Game started!"));
+        initializeGame(); // reset game variables
+      }
+      break;
+      
+    case PLAYING:
+      updateGame(); // update game logic (obstacles, background, score, etc.)
+      drawGameOver(); // draw the game elements
+      // Print score milestones
+      if (score > 0 && score % 10 == 0) {
+        Serial.print(F("Score milestone reached: "));
+        Serial.println(score);
+      }
+      break;
+      
+    case GAME_OVER:
+      drawGameOver(); // draw the game over screen
+      if (digitalRead(BUTTON_PIN) == LOW) {
+        delay(200);  // button debounce
+        gameState = START_SCREEN; // go back to start screen
+        Serial.println(F("Returning to start screen"));
+      }
+      break;
+  }
+  
+  delay(16);  // Approximately 60 FPS (frames per second)
 }
 
 // Initializes the game variables to their starting values
@@ -122,7 +185,6 @@ void initializeGame() {
     clouds[i].x = SCREEN_WIDTH + (i * SCREEN_WIDTH/2); // position the cloud off-screen on the right 
     clouds[i].y = random(0, GROUND_HEIGHT - 30); // randomize the cloud's vertical position
   }
-  
   // Initialize stars
   for(int i = 0; i < MAX_STARS; i++) {
     stars[i].active = true;
@@ -131,36 +193,94 @@ void initializeGame() {
     stars[i].lastBlink = millis(); // set the initial blink time
     stars[i].visible = true; // all stars are visible initially
   }
-  
   // Initialize obstacles
   for(int i = 0; i < MAX_OBSTACLES; i++) {
     obstacleActive[i] = false; // set all obstacles to inactive
     obstacleX[i] = SCREEN_WIDTH + (i * SCREEN_WIDTH/2); // position obstacles off-screen on the right 
     obstacleIsSmall[i] = random(2) == 0; // 50% chance to create a small cactus
   }
+
+  Serial.println(F("New game initialized"));
+  Serial.println(F("Current highest score: "));
+  Serial.println(highestScore);
 }
 
 // Draws the start screen
 void drawStartScreen() {
   display.clearDisplay(); // clear the display
-  
   // Draw title
   display.setTextSize(2); // set text size
   display.setTextColor(WHITE); // set text color to white
   display.setCursor(15, 10); // set cursor position
   display.print("DINO RUN");
-  
   // Draw instructions
   display.setTextSize(1);
   display.setCursor(10, 35);
   display.print("Push button to play");
-  
   // Draw highest score
   display.setCursor(10, 50);
   display.print("Highest Score: ");
   display.print(highestScore);
-  
   display.display(); // update the display with the drawn elements
+}
+
+// Shows game over screen with final score and highest score
+void drawGameOver() {
+  display.clearDisplay();
+  
+  if (gameState == GAME_OVER) {
+    // Draw game over screen
+    display.setTextSize(2);
+    display.setTextColor(WHITE);
+    display.setCursor(8, 15);
+    display.print("Game Over!");
+    // Display final score
+    display.setTextSize(1);
+    display.setCursor(10, 35);
+    display.print("Score: ");
+    display.print(score);
+    // Display high score
+    display.setCursor(10, 45);
+    display.print("Highest Score: ");
+    display.print(highestScore);
+    
+    display.setCursor(10, 55);
+    display.print("Push button to play");
+
+    if (score > highestScore) {
+      Serial.println(F("New high score achieved!"));
+      Serial.println(score);
+    }
+  } else {
+    drawBackground(); // draw background
+    drawDino(); // draw dino
+    //display.drawBitmap(0, dinoY, dino, DINO_WIDTH, DINO_HEIGHT, WHITE);
+    display.drawLine(0, GROUND_HEIGHT, SCREEN_WIDTH, GROUND_HEIGHT, WHITE); // draw ground
+    drawObstacles(); // draw obstacles
+    // Draw score during gameplay
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(SCREEN_WIDTH - 40, 0);
+    display.print(score);
+  }
+  
+  display.display();
+}
+
+// Draws the background (clouds and stars)
+void drawBackground() {
+  // Draw stars
+  for(int i = 0; i < MAX_STARS; i++) {
+    if (stars[i].active && stars[i].visible) { // only draw active and visible stars
+      display.drawPixel(stars[i].x, stars[i].y, WHITE);
+    }
+  }
+  // Draw clouds
+  for(int i = 0; i < MAX_CLOUDS; i++) {
+    if (clouds[i].active) {
+      display.drawBitmap(clouds[i].x, clouds[i].y, cloud, 16, 6, WHITE); // draw the cloud bitmap
+    }
+  }
 }
 
 // Updates the background (clouds and stars)
@@ -178,30 +298,12 @@ void updateBackground() {
       clouds[i].y = random(0, GROUND_HEIGHT - 30); // random vertical position
     }
   }
-  
   // Update stars (blinking effect)
   unsigned long currentTime = millis();
   for(int i = 0; i < MAX_STARS; i++) {
     if (currentTime - stars[i].lastBlink > 1000 + random(2000)) {
       stars[i].visible = !stars[i].visible; // toggle star visibility
       stars[i].lastBlink = currentTime; // update the last blink time
-    }
-  }
-}
-
-// Draws the background (clouds and stars)
-void drawBackground() {
-  // Draw stars
-  for(int i = 0; i < MAX_STARS; i++) {
-    if (stars[i].active && stars[i].visible) { // only draw active and visible stars
-      display.drawPixel(stars[i].x, stars[i].y, WHITE);
-    }
-  }
-  
-  // Draw clouds
-  for(int i = 0; i < MAX_CLOUDS; i++) {
-    if (clouds[i].active) {
-      display.drawBitmap(clouds[i].x, clouds[i].y, cloud, 16, 6, WHITE); // draw the cloud bitmap
     }
   }
 }
@@ -219,7 +321,6 @@ void drawObstacles() {
   }
 }
 
-
 // Updates the obstacles
 void updateObstacles() {
   // Move obstacles leftward, and reset them if they move off-screen
@@ -231,7 +332,6 @@ void updateObstacles() {
       } else {
         obstacleX[i] -= 4;  
       }
-
       if (obstacleX[i] < -CACTUS_WIDTH) {
         obstacleActive[i] = false;
         score++;
@@ -244,10 +344,6 @@ void updateObstacles() {
   }
 }
 
-void playTone(int frequency, int duration) {
-  tone(BUZZER_PIN, frequency, duration);
-}
-
 // Updates the game logic
 void updateGame() {
   // Jump mechanics
@@ -256,11 +352,9 @@ void updateGame() {
     dinoVelocity = -8.0;
     playTone(800, 50); // play jump sound
   }
-  
   if (isJumping) {
     dinoY += dinoVelocity; // update the dinosaur's position based on jump velocity
     dinoVelocity += 0.6; // apply gravity (increasing downward velocity)
-    
     // Check if the dinosaur touches the ground
     if (dinoY >= GROUND_HEIGHT - DINO_HEIGHT) {
       dinoY = GROUND_HEIGHT - DINO_HEIGHT;
@@ -268,7 +362,6 @@ void updateGame() {
       isJumping = false;
     }
   }
-  
   // Update obstacles
   for(int i = 0; i < MAX_OBSTACLES; i++) {
     if (obstacleActive[i]) {
@@ -282,16 +375,36 @@ void updateGame() {
       obstacleX[i] = SCREEN_WIDTH;
     }
   }
-  
   // Update background elements
   updateBackground();
-  
   // Check collisions
   if (checkCollision()) {
     gameState = GAME_OVER;
     playTone(200, 500);
     if (score > highestScore) {
       highestScore = score;
+    }
+  }
+}
+
+// Draws the dinosaur 
+void drawDino() {
+  unsigned long currentTime = millis();
+  
+  if (isJumping) {
+    // Use standard dino for jumping
+    display.drawBitmap(0, dinoY, dino, DINO_WIDTH, DINO_HEIGHT, WHITE);
+    Serial.println(F("Dino jumped!"));
+  } else {
+    // Animate running
+    if (currentTime - lastFrameTime >= FRAME_DELAY) {
+      isFirstFrame = !isFirstFrame;
+      lastFrameTime = currentTime;
+    }
+    if (isFirstFrame) {
+      display.drawBitmap(0, dinoY, dinoRun1, DINO_WIDTH, DINO_HEIGHT, WHITE);
+    } else {
+      display.drawBitmap(0, dinoY, dinoRun2, DINO_WIDTH, DINO_HEIGHT, WHITE);
     }
   }
 }
@@ -306,6 +419,9 @@ bool checkCollision() {
       if (obstacleX[i] < (DINO_WIDTH) &&
           (obstacleX[i] + obstacleWidth) > 0 &&
           (dinoY + DINO_HEIGHT) > (GROUND_HEIGHT - obstacleHeight)) {
+        Serial.println(F("Collision detected!"));
+        Serial.print(F("Final score: "));
+        Serial.println(score);
         return true;
       }
     }
@@ -313,78 +429,6 @@ bool checkCollision() {
   return false;
 }
 
-// Shows game over screen with final score and highest score
-void drawGameOver() {
-  display.clearDisplay();
-  
-  if (gameState == GAME_OVER) {
-    // Draw only game over screen
-    display.setTextSize(2);
-    display.setTextColor(WHITE);
-    display.setCursor(8, 15);
-    display.print("Game Over!");
-    
-    // Display final score
-    display.setTextSize(1);
-    display.setCursor(10, 35);
-    display.print("Score: ");
-    display.print(score);
-    
-    // Display high score
-    display.setCursor(10, 45);
-    display.print("Highest Score: ");
-    display.print(highestScore);
-    
-    display.setCursor(10, 55);
-    display.print("Push button to play");
-  } else {
-    // Draw background
-    drawBackground();
-    
-    // Draw dino
-    display.drawBitmap(0, dinoY, dino, DINO_WIDTH, DINO_HEIGHT, WHITE);
-    
-    // Draw ground
-    display.drawLine(0, GROUND_HEIGHT, SCREEN_WIDTH, GROUND_HEIGHT, WHITE);
-    
-    // Draw obstacles
-    drawObstacles();
-    
-    // Draw score during gameplay
-    display.setTextSize(1);
-    display.setTextColor(WHITE);
-    display.setCursor(SCREEN_WIDTH - 40, 0);
-    display.print(score);
-  }
-  
-  display.display();
-}
-
-// Main game loop
-void loop() {
-  switch (gameState) {
-    case START_SCREEN:
-      drawStartScreen(); // draw the start screen
-      if (digitalRead(BUTTON_PIN) == LOW) {
-        delay(200);  // button debounce
-        gameState = PLAYING; // start the game
-        initializeGame(); // reset game variables
-      }
-      break;
-      
-    case PLAYING:
-      updateGame(); // update game logic (obstacles, background, score, etc.)
-      drawGameOver(); // draw the game elements
-      break;
-      
-    case GAME_OVER:
-      drawGameOver(); // draw the game over screen
-      if (digitalRead(BUTTON_PIN) == LOW) {
-        delay(200);  // button debounce
-        gameState = START_SCREEN; // go back to start screen
-      }
-      break;
-  }
-  
-  delay(16);  // Approximately 60 FPS
+void playTone(int frequency, int duration) {
+  tone(BUZZER_PIN, frequency, duration);
 }
