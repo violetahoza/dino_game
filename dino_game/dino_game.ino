@@ -1,14 +1,18 @@
 #include <Wire.h>  // I2C communication
 #include <Adafruit_GFX.h> // provides graphics functions for display
 #include <Adafruit_SSD1306.h> // manages the OLED display
+#include <TM1637Display.h> // manages the SSD
 
 #define SCREEN_WIDTH 128 // width of the OLED screen in pixels
 #define SCREEN_HEIGHT 64 // height of the OLED screen in pixels
 #define OLED_RESET -1 // OLED reset pin 
 #define BUTTON_PIN 2 // pin for the button to control the dinosaur
 #define BUZZER_PIN 3 // pin for the buzzer (used for sound effects)
+#define CLK_PIN 4  // clock pin for TM1637
+#define DIO_PIN 5  // data pin for TM1637
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); // create the display object
+TM1637Display timeDisplay(CLK_PIN, DIO_PIN); // create TM1637 display object
 
 // Game states
 enum GameState {
@@ -35,6 +39,9 @@ float dinoVelocity; // the dinosaur's speed while jumping
 bool isJumping = false; // checks if the dinosaur is in mid-air.
 int score = 0; // holds the player's current score
 int highestScore = 0; // stores the best score
+unsigned long gameStartTime = 0; // when the current game started
+unsigned long currentGameTime = 0; // current time in the game
+unsigned long highestGameTime = 0; // highest time achieved
 
 // Background elements
 struct Cloud {
@@ -128,6 +135,10 @@ void setup() {
     for(;;); // stop the program if the display initialization fails
   }
 
+  // Initialize the TM1637 display
+  timeDisplay.setBrightness(0x0f); // set maximum brightness (0x00 to 0x0f)
+  timeDisplay.clear();
+
   Serial.println(F("Dino Game initialized successfully"));
   display.clearDisplay(); // clear the display buffer
   display.display(); // update the display
@@ -141,25 +152,28 @@ void loop() {
   switch (gameState) {
     case START_SCREEN:
       drawStartScreen(); // draw the start screen
+      displayHighestTime(); // show highest time on TM1637
       if (digitalRead(BUTTON_PIN) == LOW) {
         delay(200);  // button debounce
         gameState = PLAYING; // start the game
+        gameStartTime = millis(); // record game start time
         Serial.println(F("Game started!"));
         initializeGame(); // reset game variables
       }
       break;
       
     case PLAYING:
+      currentGameTime = (millis() - gameStartTime) / 1000; // calculate current time in seconds
+      displayCurrentTime();
       updateGame(); // update game logic (obstacles, background, score, etc.)
       drawGameOver(); // draw the game elements
-      // Print score milestones
-      if (score > 0 && score % 10 == 0) {
-        Serial.print(F("Score milestone reached: "));
-        Serial.println(score);
-      }
       break;
       
     case GAME_OVER:
+      if (currentGameTime > highestGameTime) {
+        highestGameTime = currentGameTime;
+        displayHighestTime();
+      }
       drawGameOver(); // draw the game over screen
       if (digitalRead(BUTTON_PIN) == LOW) {
         delay(200);  // button debounce
@@ -178,6 +192,8 @@ void initializeGame() {
   dinoVelocity = 0; // set the initial vertical velocity to 0
   isJumping = false; // the dino is not jumping
   score = 0; // reset the score
+  currentGameTime = 0; // reset current game time
+  gameStartTime = millis();
   
   // Initialize clouds
   for(int i = 0; i < MAX_CLOUDS; i++) {
@@ -203,6 +219,8 @@ void initializeGame() {
   Serial.println(F("New game initialized"));
   Serial.println(F("Current highest score: "));
   Serial.println(highestScore);
+  Serial.println(F("Current highest time (seconds): "));
+  Serial.println(highestGameTime);
 }
 
 // Draws the start screen
@@ -241,15 +259,20 @@ void drawGameOver() {
     display.print(score);
     // Display high score
     display.setCursor(10, 45);
-    display.print("Highest Score: ");
-    display.print(highestScore);
+    display.print("Time: ");
+    display.print(currentGameTime);
+    display.print("s");
     
     display.setCursor(10, 55);
     display.print("Push button to play");
 
     if (score > highestScore) {
-      Serial.println(F("New high score achieved!"));
+      Serial.println(F("New highest score achieved!"));
       Serial.println(score);
+    }
+    if (currentGameTime > highestGameTime) {
+      Serial.println(F("New highest time achieved!"));
+      Serial.println(currentGameTime);
     }
   } else {
     drawBackground(); // draw background
@@ -369,6 +392,12 @@ void updateGame() {
       if (obstacleX[i] < -CACTUS_WIDTH) {
         obstacleActive[i] = false;
         score++;
+        // Print score milestones
+        if (score > 0 && score % 10 == 0) {
+          Serial.print(F("Score milestone reached: "));
+          Serial.println(score);
+          playMilestoneSound();
+        }
       }
     } else if (random(100) < 2) {
       obstacleActive[i] = true;
@@ -429,6 +458,26 @@ bool checkCollision() {
   return false;
 }
 
+// Display current time on TM1637
+void displayCurrentTime() {
+  timeDisplay.showNumberDecEx(currentGameTime, 0b01000000, true); // show with center colon
+}
+
+// Display highest time on TM1637
+void displayHighestTime() {
+  timeDisplay.showNumberDecEx(highestGameTime, 0b01000000, true); // show with center colon
+}
+
 void playTone(int frequency, int duration) {
   tone(BUZZER_PIN, frequency, duration);
+}
+
+// Play a milestone sound
+void playMilestoneSound() {
+  playTone(523, 50);
+  delay(50);
+  playTone(659, 50);
+  delay(50);
+  playTone(784, 100);
+  delay(100);
 }
