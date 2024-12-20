@@ -20,4 +20,4 @@ A simple dinosaur-themed game inspired by the Chrome Dino game, implemented for 
 - Push buttons for user input
 - Jumper wires and breadboard for connections
 
-![Alt text for the image](start.png) 
+![Game Setup](setup.png) 
