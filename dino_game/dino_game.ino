@@ -1,12 +1,13 @@
 #include <Wire.h>  // I2C communication
 #include <Adafruit_GFX.h> // provides graphics functions for display
 #include <Adafruit_SSD1306.h> // manages the OLED display
-#include <TM1637Display.h> // manages the SSD
+#include <TM1637Display.h> 
 
 #define SCREEN_WIDTH 128 // width of the OLED screen in pixels
 #define SCREEN_HEIGHT 64 // height of the OLED screen in pixels
 #define OLED_RESET -1 // OLED reset pin 
-#define BUTTON_PIN 2 // pin for the button to control the dinosaur
+#define JUMP_BUTTON_PIN 2 // pin for the jump button
+#define DUCK_BUTTON_PIN 6 // pin for the duck button
 #define BUZZER_PIN 3 // pin for the buzzer (used for sound effects)
 #define CLK_PIN 4  // clock pin for TM1637
 #define DIO_PIN 5  // data pin for TM1637
@@ -18,7 +19,7 @@ TM1637Display timeDisplay(CLK_PIN, DIO_PIN); // create TM1637 display object
 enum GameState {
   START_SCREEN, // game is on the start screen
   PLAYING, // game is ongoing (playing)
-  GAME_OVER // Game has ended
+  GAME_OVER // game has ended
 };
 
 // Variable that holds the current state of the game
@@ -32,11 +33,21 @@ const int CACTUS_WIDTH = 12;
 const int CACTUS_HEIGHT = 24;
 const int SMALL_CACTUS_WIDTH = 10;  
 const int SMALL_CACTUS_HEIGHT = 20; 
+const int PTERO_WIDTH = 23;
+const int PTERO_HEIGHT = 20;
+const int DINO_DUCK_WIDTH = 29;
+const int DINO_DUCK_HEIGHT = 15;
+
+// Constants for game mechanics
+const int PTERO_GROUND_HEIGHT = GROUND_HEIGHT - PTERO_HEIGHT; // ground level for pterodactyl
+const int PTERO_HIGH_HEIGHT = GROUND_HEIGHT - DINO_DUCK_HEIGHT - PTERO_HEIGHT - 5; // height above ducking dino
+const float BASE_OBSTACLE_SPEED = 4.0; // base speed for obstacles
 
 // Game variables
 int dinoY; // stores the vertical position of the dinosaur
 float dinoVelocity; // the dinosaur's speed while jumping
-bool isJumping = false; // checks if the dinosaur is in mid-air.
+bool isJumping = false; // checks if the dinosaur is in mid-air
+bool isDucking = false; // checks if the dinosaur is ducking
 int score = 0; // holds the player's current score
 int highestScore = 0; // stores the best score
 unsigned long gameStartTime = 0; // when the current game started
@@ -64,10 +75,25 @@ Cloud clouds[MAX_CLOUDS]; // array to hold clouds
 Star stars[MAX_STARS]; // array to hold stars
 
 // Obstacle management
+enum ObstacleType {
+  CACTUS_LARGE,
+  CACTUS_SMALL,
+  PTERODACTYL
+};
+
+struct Obstacle {
+  int x;
+  bool active;
+  ObstacleType type;
+  int y; // for flying obstacles
+};
+
 const int MAX_OBSTACLES = 2; // maximum number of obstacles
-int obstacleX[MAX_OBSTACLES]; // x-coordinates of the obstacles
-bool obstacleActive[MAX_OBSTACLES];  // flags to check if obstacles are active
-bool obstacleIsSmall[MAX_OBSTACLES]; // keep track of which obstacles are small
+Obstacle obstacles[MAX_OBSTACLES];
+
+// int obstacleX[MAX_OBSTACLES]; // x-coordinates of the obstacles
+// bool obstacleActive[MAX_OBSTACLES];  // flags to check if obstacles are active
+// bool obstacleIsSmall[MAX_OBSTACLES]; // keep track of which obstacles are small
 
 // Bitmap definitions for game elements (dino, cactus, clouds)
 const unsigned char PROGMEM dino[] = {
@@ -101,6 +127,14 @@ const unsigned char PROGMEM dinoRun2[] = {
   0x01, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+const unsigned char PROGMEM dinoDuck[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 
+  0x01, 0xFF, 0x80, 0x00, 0x01, 0xFF, 0xC0, 0x00, 0x01, 0xFF, 0xF0, 0x00, 0x03, 0xFF, 0xF8, 0x00, 
+  0x0F, 0xFF, 0xFC, 0x00, 0x0F, 0xFF, 0xFC, 0x00, 0x07, 0xFF, 0xF8, 0x00, 0x03, 0xFF, 0xE0, 0x00, 
+  0x01, 0x88, 0x60, 0x00, 0x01, 0x0C, 0x20, 0x00, 
+  0x01, 0x0C, 0x20, 0x00  
+};
+
 // 12x24 cactus
 const unsigned char PROGMEM cactus[] = {
   0x1e, 0x00, 0x1f, 0x00, 0x1f, 0x40, 0x1f, 0xe0, 0x1f, 0xe0, 0xdf, 0xe0, 0xff, 0xe0, 0xff, 0xe0, 
@@ -119,6 +153,22 @@ const unsigned char PROGMEM cloud[] = {
     0x0F, 0xC0, 0x1F, 0xE0, 0x3F, 0xF0, 0x3F, 0xF0, 0x1F, 0xE0, 0x0F, 0xC0
 };
 
+const unsigned char PROGMEM pterodactyl1[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+  0x60, 0x00, 0x00, 0x70, 0x00, 0x00, 0xF8, 0x00, 0x00, 0xFC, 0x00, 0x00, 
+  0xFE, 0x7F, 0x00, 0x80, 0xFF, 0x00, 0x00, 0xFF, 0x3F, 0x00, 0xFE, 0x07, 
+  0x00, 0xFE, 0x1F, 0x00, 0xFE, 0x03, 0x00, 0x1E, 0x00, 0x00, 0x0E, 0x00, 
+  0x00, 0x06, 0x00, 0x00, 0x06, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00
+};
+
+const unsigned char PROGMEM pterodactyl2[] = {
+  0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x00, 0x07, 0x00, 
+  0x60, 0x0E, 0x00, 0x70, 0x1E, 0x00, 0xF8, 0x3E, 0x00, 0xFC, 0x7E, 0x00, 
+  0xFE, 0x7F, 0x00, 0x80, 0xFF, 0x00, 0x00, 0xFF, 0x3F, 0x00, 0xFE, 0x07, 
+  0x00, 0xFC, 0x1F, 0x00, 0xF8, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
 // Add animation variables
 unsigned long lastFrameTime = 0;
 const int FRAME_DELAY = 100; // time between animation frames in milliseconds
@@ -126,7 +176,8 @@ bool isFirstFrame = true;
 
 void setup() {
   Serial.begin(9600); // start serial communication for debugging
-  pinMode(BUTTON_PIN, INPUT_PULLUP); // configure the button pin as input with internal pull-up
+  pinMode(JUMP_BUTTON_PIN, INPUT_PULLUP); // configure the button pin as input with internal pull-up
+  pinMode(DUCK_BUTTON_PIN, INPUT_PULLUP); // configure the button pin as input with internal pull-up
   pinMode(BUZZER_PIN, OUTPUT); // configure the buzzer pin as output
   
   // Initialize the OLED display
@@ -153,7 +204,7 @@ void loop() {
     case START_SCREEN:
       drawStartScreen(); // draw the start screen
       displayHighestTime(); // show highest time on TM1637
-      if (digitalRead(BUTTON_PIN) == LOW) {
+      if (digitalRead(JUMP_BUTTON_PIN) == LOW || digitalRead(DUCK_BUTTON_PIN) == LOW) {
         delay(200);  // button debounce
         gameState = PLAYING; // start the game
         gameStartTime = millis(); // record game start time
@@ -175,7 +226,7 @@ void loop() {
         displayHighestTime();
       }
       drawGameOver(); // draw the game over screen
-      if (digitalRead(BUTTON_PIN) == LOW) {
+      if (digitalRead(JUMP_BUTTON_PIN) == LOW || digitalRead(DUCK_BUTTON_PIN) == LOW) {
         delay(200);  // button debounce
         gameState = START_SCREEN; // go back to start screen
         Serial.println(F("Returning to start screen"));
@@ -183,7 +234,7 @@ void loop() {
       break;
   }
   
-  delay(16);  // Approximately 60 FPS (frames per second)
+  delay(16); // Approximately 60 FPS (frames per second)
 }
 
 // Initializes the game variables to their starting values
@@ -191,6 +242,7 @@ void initializeGame() {
   dinoY = GROUND_HEIGHT - DINO_HEIGHT; // set dino's Y-position to ground level
   dinoVelocity = 0; // set the initial vertical velocity to 0
   isJumping = false; // the dino is not jumping
+  isDucking = false;
   score = 0; // reset the score
   currentGameTime = 0; // reset current game time
   gameStartTime = millis();
@@ -211,9 +263,12 @@ void initializeGame() {
   }
   // Initialize obstacles
   for(int i = 0; i < MAX_OBSTACLES; i++) {
-    obstacleActive[i] = false; // set all obstacles to inactive
-    obstacleX[i] = SCREEN_WIDTH + (i * SCREEN_WIDTH/2); // position obstacles off-screen on the right 
-    obstacleIsSmall[i] = random(2) == 0; // 50% chance to create a small cactus
+    obstacles[i].active = false; // set all obstacles to inactive
+    obstacles[i].x = SCREEN_WIDTH + (i * SCREEN_WIDTH/2); // position obstacles off-screen on the right 
+    obstacles[i].type = random(3) == 0 ? PTERODACTYL : 
+                       (random(2) == 0 ? CACTUS_SMALL : CACTUS_LARGE);
+    obstacles[i].y = obstacles[i].type == PTERODACTYL ? 
+                    random(2) * 20 + GROUND_HEIGHT - 40 : GROUND_HEIGHT;
   }
 
   Serial.println(F("New game initialized"));
@@ -334,11 +389,26 @@ void updateBackground() {
 // Draws the obstacles 
 void drawObstacles() {
   for (int i = 0; i < MAX_OBSTACLES; i++) {
-    if (obstacleActive[i]) {
-      if (obstacleIsSmall[i]) {
-        display.drawBitmap(obstacleX[i], GROUND_HEIGHT - SMALL_CACTUS_HEIGHT, smallCactus, SMALL_CACTUS_WIDTH, SMALL_CACTUS_HEIGHT, WHITE); // draw small cactus
-      } else {
-        display.drawBitmap(obstacleX[i], GROUND_HEIGHT - CACTUS_HEIGHT, cactus, CACTUS_WIDTH, CACTUS_HEIGHT, WHITE); // draw large cactus
+    if (obstacles[i].active) {
+      switch (obstacles[i].type) {
+        case PTERODACTYL:
+          // Animate pterodactyl
+          if (millis() % 200 < 100) {
+            display.drawBitmap(obstacles[i].x, obstacles[i].y, pterodactyl1, 
+                             PTERO_WIDTH, PTERO_HEIGHT, WHITE);
+          } else {
+            display.drawBitmap(obstacles[i].x, obstacles[i].y, pterodactyl2, 
+                             PTERO_WIDTH, PTERO_HEIGHT, WHITE);
+          }
+          break;
+        case CACTUS_SMALL:
+          display.drawBitmap(obstacles[i].x, GROUND_HEIGHT - SMALL_CACTUS_HEIGHT,
+                           smallCactus, SMALL_CACTUS_WIDTH, SMALL_CACTUS_HEIGHT, WHITE);
+          break;
+        case CACTUS_LARGE:
+          display.drawBitmap(obstacles[i].x, GROUND_HEIGHT - CACTUS_HEIGHT,
+                           cactus, CACTUS_WIDTH, CACTUS_HEIGHT, WHITE);
+          break;
       }
     }
   }
@@ -346,35 +416,53 @@ void drawObstacles() {
 
 // Updates the obstacles
 void updateObstacles() {
-  // Move obstacles leftward, and reset them if they move off-screen
-  // Randomly generate new obstacles
+  // Update existing obstacles
   for (int i = 0; i < MAX_OBSTACLES; i++) {
-    if (obstacleActive[i]) {
-      if (obstacleIsSmall[i]) {
-        obstacleX[i] -= 3;  
-      } else {
-        obstacleX[i] -= 4;  
-      }
-      if (obstacleX[i] < -CACTUS_WIDTH) {
-        obstacleActive[i] = false;
+    if (obstacles[i].active) {
+      // Move obstacle with speed based on score and obstacle type
+      float speedMultiplier = 1.0 + (score / 10.0); // speed increases with score
+      float baseSpeed = obstacles[i].type == PTERODACTYL ? BASE_OBSTACLE_SPEED + 1 : BASE_OBSTACLE_SPEED;
+      obstacles[i].x -= (baseSpeed * speedMultiplier);
+
+      // Remove obstacle when it goes off screen
+      if (obstacles[i].x < -PTERO_WIDTH) {
+        obstacles[i].active = false;
         score++;
+        if (score > 0 && score % 10 == 0) {
+          playMilestoneSound();
+        }
       }
-    } else if (random(100) < 2) {  // adjust the spawn rate
-      obstacleActive[i] = true;
-      obstacleX[i] = SCREEN_WIDTH;
-      obstacleIsSmall[i] = random(2) == 0;  // 50% chance for small cactus
+    } else if (random(100) < 2) {
+      // Spawn new obstacle
+      obstacles[i].active = true;
+      obstacles[i].x = SCREEN_WIDTH;
+      obstacles[i].type = random(3) == 0 ? PTERODACTYL : 
+                         (random(2) == 0 ? CACTUS_SMALL : CACTUS_LARGE);
+      obstacles[i].y = obstacles[i].type == PTERODACTYL ? 
+                      random(2) * 20 + GROUND_HEIGHT - 40 : GROUND_HEIGHT;
     }
   }
 }
 
 // Updates the game logic
 void updateGame() {
-  // Jump mechanics
-  if (!isJumping && digitalRead(BUTTON_PIN) == LOW) {
+  // Handle jumping and ducking
+  bool jumpPressed = (digitalRead(JUMP_BUTTON_PIN) == LOW);
+  bool duckPressed = (digitalRead(DUCK_BUTTON_PIN) == LOW);
+  
+  // Can't jump while ducking
+  if (jumpPressed && !isJumping && !isDucking) {
     isJumping = true;
     dinoVelocity = -8.0;
-    playTone(800, 50); // play jump sound
+    playTone(800, 50);
+  } 
+  // Handle ducking state
+  if (duckPressed && !isJumping) {
+    isDucking = true;
+  } else {
+    isDucking = false;
   }
+  // Update jump physics
   if (isJumping) {
     dinoY += dinoVelocity; // update the dinosaur's position based on jump velocity
     dinoVelocity += 0.6; // apply gravity (increasing downward velocity)
@@ -385,27 +473,10 @@ void updateGame() {
       isJumping = false;
     }
   }
-  // Update obstacles
-  for(int i = 0; i < MAX_OBSTACLES; i++) {
-    if (obstacleActive[i]) {
-      obstacleX[i] -= 4;
-      if (obstacleX[i] < -CACTUS_WIDTH) {
-        obstacleActive[i] = false;
-        score++;
-        // Print score milestones
-        if (score > 0 && score % 10 == 0) {
-          Serial.print(F("Score milestone reached: "));
-          Serial.println(score);
-          playMilestoneSound();
-        }
-      }
-    } else if (random(100) < 2) {
-      obstacleActive[i] = true;
-      obstacleX[i] = SCREEN_WIDTH;
-    }
-  }
-  // Update background elements
+  
+  updateObstacles();
   updateBackground();
+  
   // Check collisions
   if (checkCollision()) {
     gameState = GAME_OVER;
@@ -420,7 +491,11 @@ void updateGame() {
 void drawDino() {
   unsigned long currentTime = millis();
   
-  if (isJumping) {
+  if (isDucking && !isJumping) {
+    display.drawBitmap(0, GROUND_HEIGHT - DINO_DUCK_HEIGHT, dinoDuck, 
+                      DINO_DUCK_WIDTH, DINO_DUCK_HEIGHT, WHITE);
+    Serial.println(F("Dino ducked!"));
+  } else if (isJumping) {
     // Use standard dino for jumping
     display.drawBitmap(0, dinoY, dino, DINO_WIDTH, DINO_HEIGHT, WHITE);
     Serial.println(F("Dino jumped!"));
@@ -441,17 +516,52 @@ void drawDino() {
 // Checks if the dinosaur collides with any obstacle
 bool checkCollision() {
   for (int i = 0; i < MAX_OBSTACLES; i++) {
-    if (obstacleActive[i]) {
-      int obstacleWidth = obstacleIsSmall[i] ? SMALL_CACTUS_WIDTH : CACTUS_WIDTH;
-      int obstacleHeight = obstacleIsSmall[i] ? SMALL_CACTUS_HEIGHT : CACTUS_HEIGHT;
+    if (obstacles[i].active) {
+      int obstacleWidth, obstacleHeight;
+      int dinoCurrentHeight = isDucking ? DINO_DUCK_HEIGHT : DINO_HEIGHT;
+      int dinoCurrentWidth = isDucking ? DINO_DUCK_WIDTH : DINO_WIDTH;
 
-      if (obstacleX[i] < (DINO_WIDTH) &&
-          (obstacleX[i] + obstacleWidth) > 0 &&
-          (dinoY + DINO_HEIGHT) > (GROUND_HEIGHT - obstacleHeight)) {
-        Serial.println(F("Collision detected!"));
-        Serial.print(F("Final score: "));
-        Serial.println(score);
-        return true;
+      switch (obstacles[i].type) {
+        case PTERODACTYL:
+          obstacleWidth = PTERO_WIDTH;
+          obstacleHeight = PTERO_HEIGHT;
+          break;
+        case CACTUS_SMALL:
+          obstacleWidth = SMALL_CACTUS_WIDTH;
+          obstacleHeight = SMALL_CACTUS_HEIGHT;
+          break;
+        case CACTUS_LARGE:
+          obstacleWidth = CACTUS_WIDTH;
+          obstacleHeight = CACTUS_HEIGHT;
+          break;
+      }
+
+      // Check collision based on obstacle type and dino state
+      if (obstacles[i].x < dinoCurrentWidth &&
+          obstacles[i].x + obstacleWidth > 0) {
+        
+        if (obstacles[i].type == PTERODACTYL) {
+          if (obstacles[i].y == PTERO_HIGH_HEIGHT) {
+              // For high pterodactyl, only collide if not ducking
+              if (!isDucking && dinoY + dinoCurrentHeight > obstacles[i].y) {
+                Serial.println("Collision with a pterodactyl");
+                return true;
+              }
+            } else {
+              // For ground level pterodactyl, treat like a cactus
+              if (dinoY + dinoCurrentHeight > obstacles[i].y) {
+                Serial.println("Collision with a pterodactyl");
+                return true;
+              }
+            }
+        }
+        else {
+          // For cactuses, check normal collision
+          if (dinoY + dinoCurrentHeight > GROUND_HEIGHT - obstacleHeight) {
+            Serial.println("Collision with a cactus");
+            return true;
+          }
+        }
       }
     }
   }
