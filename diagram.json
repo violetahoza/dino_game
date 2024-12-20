@@ -14,8 +14,8 @@
     {
       "type": "wokwi-pushbutton",
       "id": "btn1",
-      "top": 179,
-      "left": 345.6,
+      "top": 140.6,
+      "left": 364.8,
       "attrs": { "color": "green" }
     },
     {
@@ -31,6 +31,13 @@
       "top": -134.44,
       "left": -40.97,
       "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": 198.2,
+      "left": 364.8,
+      "attrs": { "color": "blue" }
     }
   ],
   "connections": [
@@ -45,7 +52,9 @@
     [ "sevseg1:CLK", "uno:4", "green", [ "h0" ] ],
     [ "sevseg1:DIO", "uno:5", "green", [ "h0" ] ],
     [ "sevseg1:GND", "uno:GND.1", "black", [ "h19.2", "v48", "h-38.4" ] ],
-    [ "sevseg1:VCC", "uno:5V", "red", [ "h38.4", "v48", "h-182.4", "v268.8", "h163.2" ] ]
+    [ "sevseg1:VCC", "uno:5V", "red", [ "h38.4", "v48", "h-182.4", "v268.8", "h163.2" ] ],
+    [ "btn2:2.l", "uno:GND.3", "black", [ "h-48", "v-28.6", "h-115.2" ] ],
+    [ "btn2:1.l", "uno:6", "green", [ "h-38.4", "v-288", "h-105.6" ] ]
   ],
   "dependencies": {}
 }
