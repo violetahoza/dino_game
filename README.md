@@ -19,3 +19,5 @@ A simple dinosaur-themed game inspired by the Chrome Dino game, implemented for 
 - Buzzer for sound effects
 - Push buttons for user input
 - Jumper wires and breadboard for connections
+
+![Alt text for the image](start.png) 
